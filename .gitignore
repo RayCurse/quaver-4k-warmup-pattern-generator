@@ -3,3 +3,5 @@ MetronomeSounds/*
 !MetronomeSounds/default
 *.qp
 out/*
+*.mp3
+*.zip

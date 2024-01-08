@@ -166,18 +166,19 @@ if __name__ == "__main__":
     shutil.rmtree(outDir)
     os.mkdir(outDir)
 
-    bpm = 180
-    measures = 32
+    pattern = Pattern.LightChordjack
+    bpm = 110
+    measures = 64
     meter = 4
 
     print("Creating audio...")
     audioSegment = createMetronomeSegment(bpm, measures, "out.mp3")
     print("Creating patterns...")
-    seq = createPatternSequence(Pattern.DenseHandstream, measures)
+    seq = createPatternSequence(pattern, measures)
     print("Exporting...")
 
     os.mkdir(outDir / "output")
     audioSegment.export(outDir / "output" / "audio.mp3", format="mp3")
-    createQuaFile(outDir / "output" / "a.qua", seq, bpm)
+    createQuaFile(outDir / "output" / "a.qua", seq, bpm, diffname=str(pattern))
     shutil.make_archive(str(outDir / "output"), "zip", outDir / "output")
     shutil.copyfile(outDir / "output.zip", Path(__file__).parent / "output.qp")
