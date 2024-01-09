@@ -1,12 +1,10 @@
 from enum import Enum
-from zipfile import ZipFile
 from random import shuffle
+from random import sample
 import os
 import shutil
-import re
 from pathlib import Path
 from pydub import AudioSegment
-from pydub.generators import Sine
 
 # Metronome audio creation
 metronomeDir = Path(__file__).parent / "MetronomeSounds"
@@ -65,6 +63,60 @@ def randomNote(length=1):
     shuffle(note)
     return note
 
+def randomDiffNote(prevNote, length=1):
+    if length < noteLength(prevNote):
+        pass
+
+def randomJackNote(prevNote, length, numOfJacks, excludedJackColumns=None):
+    # random note that overlaps with prevNote exactly numOfJacks times on columns that are not in excludedJackColumns
+
+    if length > numLanes: raise Exception("invalid pattern")
+    if length < numOfJacks: raise Exception("invalid pattern")
+
+    # numOfJacks takes precedence over excludedJackColumns, that is, if they're not enough available jack columns,
+    # random columns will be removed from excludedJackColumns so that there are
+    if excludedJackColumns:
+        # remove ignored indices that don't overlap with previous note
+        extraIndices = list()
+        for i in excludedJackColumns:
+            if not prevNote[i]: extraIndices.append(i)
+        for i in extraIndices:
+            excludedJackColumns.remove(i)
+
+        if noteLength(prevNote) - len(excludedJackColumns) < numOfJacks:
+            excludedJackColumns = set(sample(list(excludedJackColumns), noteLength(prevNote) - numOfJacks))
+
+    availableJackColumns = set()
+    for i, x in enumerate(prevNote):
+        if not x: continue
+        if excludedJackColumns is not None and i in excludedJackColumns: continue
+        availableJackColumns.add(i)
+    numOfJacks = min(numOfJacks, len(availableJackColumns))
+
+    newNote = [False] * numLanes
+
+    jackedNotes = set()
+    if 0 < numOfJacks:
+        jackNoteOverlay = [True]*numOfJacks + [False]*(len(availableJackColumns) - numOfJacks)
+        shuffle(jackNoteOverlay)
+        i = 0
+        for j in range(numLanes):
+            if j not in availableJackColumns: continue
+            newNote[j] = jackNoteOverlay[i]
+            jackedNotes.add(j)
+            i += 1
+
+    if length > numOfJacks:
+        nonJackNoteOverlay = [True]*(length - numOfJacks) + [False]*(numLanes - noteLength(prevNote) - length + numOfJacks)
+        shuffle(nonJackNoteOverlay)
+        i = 0
+        for j in range(numLanes):
+            if prevNote[j]: continue
+            newNote[j] = nonJackNoteOverlay[i]
+            i += 1
+
+    return newNote, jackedNotes
+
 def randomStreamNote(prevNote, length=1):
     # new note of given length that doesn't create a jack with prev note
     availableNotes = numLanes - noteLength(prevNote)
@@ -79,47 +131,70 @@ def randomStreamNote(prevNote, length=1):
         i += 1
     return note
 
-def generatePatternNote(pattern, subdivision, prevNote):
+def generatePatternNote(pattern, subdivision, prevNote, prevData=None):
     # generate note based on subdivision within measure and prevNote
+    # prevData is the second return value of the previous call to generatePatternNote in this pattern sequence
+    # prevData is None for the first note in the pattern sequence
     if pattern == Pattern.SingleStream:
         return randomStreamNote(prevNote)
+
     elif pattern == Pattern.LightJumpstream:
         return randomStreamNote(prevNote, 2 if subdivision == 0 else 1)
+
     elif pattern == Pattern.DenseJumpstream:
         return randomStreamNote(prevNote, 2 if subdivision % 2 == 0 else 1)
+
     elif pattern == Pattern.LightHandstream:
         return randomStreamNote(prevNote, 3 if subdivision == 0 else 1)
+
     elif pattern == Pattern.DenseHandstream:
         if subdivision == 0: return randomStreamNote(prevNote, min(3, numLanes - noteLength(prevNote)))
         elif subdivision % 4 == 0: return randomStreamNote(prevNote, 3)
         elif subdivision % 2 == 0: return randomStreamNote(prevNote, 2)
         else: return randomStreamNote(prevNote)
+
     elif pattern == Pattern.Jumpjack:
-        return randomNote(2)
+        return randomJackNote(prevNote, 2, 1, prevData)
+
     elif pattern == Pattern.LightChordjack:
-        return randomNote(3 if subdivision % 2 == 0 else 2)
+        length = 3 if subdivision % 2 == 0 else 2
+        return randomJackNote(prevNote, length, max(0, length - numLanes + noteLength(prevNote)), prevData)
+
     elif pattern == Pattern.DenseChordjack:
-        return randomNote(4 if subdivision == 0 else 3)
+        length = 4 if subdivision == 0 else 3
+        return randomJackNote(prevNote, length, max(0, length - numLanes + noteLength(prevNote)), prevData)
+
     elif pattern == Pattern.Quadjack:
         return randomNote(4)
+
     else:
         raise Exception("invalid pattern")
 
 def createPatternSequence(pattern, measures, meter=4):
     # Notes are lists or tuples of booleans, one for each lane
     currentNote = 0
+    prevData = None
     notes = []
     for _ in range(measures):
         for _ in range(meter):
             for subdivision in range(beatSubdivision): # sixteenth notes
                 prevNote = [False]*numLanes if currentNote == 0 else notes[currentNote - 1]
-                notes.append(generatePatternNote(pattern, subdivision, prevNote))
+                newNote, data = generatePatternNote(pattern, subdivision, prevNote, prevData)
+                notes.append(newNote)
+
+                prevData = data
                 currentNote += 1
 
-    notes.append(generatePatternNote(pattern, 0, notes[currentNote - 1]))
+    finalNote, prevData = generatePatternNote(pattern, 0, notes[currentNote - 1], prevData)
+    notes.append(finalNote)
     currentNote += 1
 
     return notes
+
+def printPatternSequence(seq):
+    for note in reversed(seq):
+        for x in note: print("⬤" if x else " ", end="")
+        print("\n", end="")
 
 # qua file creation
 def createQuaFile(path, patternSequence, bpm, title="Pattern Generator", diffname="1", audioName="audio.mp3"):
@@ -167,7 +242,7 @@ if __name__ == "__main__":
     os.mkdir(outDir)
 
     pattern = Pattern.LightChordjack
-    bpm = 110
+    bpm = 90
     measures = 64
     meter = 4
 
@@ -175,6 +250,7 @@ if __name__ == "__main__":
     audioSegment = createMetronomeSegment(bpm, measures, "out.mp3")
     print("Creating patterns...")
     seq = createPatternSequence(pattern, measures)
+    # printPatternSequence(seq)
     print("Exporting...")
 
     os.mkdir(outDir / "output")
