@@ -31,7 +31,7 @@ def metronomeTiming(bpm, measures, meter):
 
     return zip(measureNumbers, beatNumbers, msTimings)
 
-def createMetronomeAudioData(patternSegments, metronomestyle="default", gain=20):
+def createMetronomeAudioData(patternSegments, metronomestyle="default", gain=30):
     # Get metronme sound samples
     hiSound = None
     loSound = None
@@ -307,13 +307,21 @@ def createQuaFile(path, patternData, title="Pattern Generator", diffname="1", au
 if __name__ == "__main__":
     patternSegments = [
         # pattern,                  bpm,  measures,  meter,  beatSubdivision
-        ( Pattern.LightChordjack,   110,  5,         4,      4               ),
-        ( Pattern.DenseHandstream,  200,  8,         4,      4               ),
-        ( Pattern.DenseChordjack,   220,  3,         6,      2               ),
+        ( Pattern.SingleStream,     170,  16,        4,      4               ),
+        ( Pattern.Jumpjack,         210,  16,        4,      2               ),
+
+        ( Pattern.LightJumpstream,  180,  16,        4,      4               ),
+        ( Pattern.LightChordjack,   220,  32,        4,      2               ),
+
+        ( Pattern.DenseJumpstream,  190,  32,        4,      4               ),
+        ( Pattern.LightChordjack,   230,  32,        4,      2               ),
+
+        ( Pattern.DenseHandstream,  180,  16,        4,      4               ),
+        ( Pattern.DenseChordjack,   190,  16,        4,      2               ),
     ]
 
     print("Creating audio...")
-    audioData = createMetronomeAudioData(patternSegments, metronomestyle="default")
+    audioData = createMetronomeAudioData(patternSegments)
 
     print("Exporting...")
     with TemporaryDirectory() as tmpDirName:

@@ -1,6 +1,4 @@
 .python-version
-MetronomeSounds/*
-!MetronomeSounds/default
 *.qp
 out/*
 *.mp3
