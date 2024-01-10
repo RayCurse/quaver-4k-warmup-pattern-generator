@@ -1,16 +1,15 @@
 import os
 import itertools
 import shutil
+from tempfile import TemporaryDirectory
 from enum import Enum
 from random import shuffle
 from random import sample
 from pathlib import Path
 from pydub import AudioSegment
+fileDir = Path(__file__).parent
 
 # Metronome audio creation
-metronomeDir = Path(__file__).parent / "MetronomeSounds"
-outDir = Path(__file__).parent / "out"
-
 def metronomeDuration(bpm, measures, meter):
     numBeats = meter*measures
     msPerBeat = 60000 / bpm
@@ -36,7 +35,7 @@ def createMetronomeAudioData(patternSegments, metronomestyle="default", gain=20)
     # Get metronme sound samples
     hiSound = None
     loSound = None
-    for filePath in (metronomeDir / metronomestyle).iterdir():
+    for filePath in (fileDir / "MetronomeSounds" / metronomestyle).iterdir():
         if filePath.is_dir(): continue
         if filePath.stem.endswith("hi") and hiSound is None:
             hiSound = AudioSegment.from_file(filePath)
@@ -306,9 +305,6 @@ def createQuaFile(path, patternData, title="Pattern Generator", diffname="1", au
             quaFile.write("".join(hitObjects))
 
 if __name__ == "__main__":
-    shutil.rmtree(outDir)
-    os.mkdir(outDir)
-
     patternSegments = [
         # pattern,                  bpm,  measures,  meter,  beatSubdivision
         ( Pattern.LightChordjack,   110,  5,         4,      4               ),
@@ -320,8 +316,9 @@ if __name__ == "__main__":
     audioData = createMetronomeAudioData(patternSegments, metronomestyle="default")
 
     print("Exporting...")
-    os.mkdir(outDir / "output")
-    audioData.export(outDir / "output" / "audio.mp3", format="mp3")
-    createQuaFile(outDir / "output" / "a.qua", patternSegments)
-    shutil.make_archive(str(outDir / "output"), "zip", outDir / "output")
-    shutil.copyfile(outDir / "output.zip", Path(__file__).parent / "output.qp")
+    with TemporaryDirectory() as tmpDirName:
+        tmpDirPath = Path(tmpDirName)
+        audioData.export(tmpDirPath / "audio.mp3", format="mp3")
+        createQuaFile(tmpDirPath / "map.qua", patternSegments)
+        shutil.make_archive(base_name=str(fileDir / "out"), format="zip", root_dir=tmpDirName)
+        shutil.move(fileDir / "out.zip", fileDir / "out.qp")
