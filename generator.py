@@ -74,6 +74,7 @@ def createMetronomeAudioData(patternSegments, metronomestyle="default", gain=30)
 numLanes = 4
 
 class Pattern(Enum):
+    Break = 0
     SingleStream = 1
     LightJumpstream = 2
     DenseJumpstream = 3
@@ -168,7 +169,10 @@ def generatePatternNote(pattern, subdivision, prevNote, prevData=None):
     note = None
     data = None
 
-    if pattern == Pattern.SingleStream:
+    if pattern == Pattern.Break:
+        note = [False] * numLanes
+
+    elif pattern == Pattern.SingleStream:
         note = randomStreamNote(prevNote)
 
     elif pattern == Pattern.LightJumpstream:
@@ -247,12 +251,14 @@ def createQuaFile(path, patternData, title="Pattern Generator", diffname="1", au
             f"  Signature: {meter}\n"
         )
 
-        notes = createNotePattern(pattern, measures, meter, beatSubdivision, lastnote=i==len(patternData)-1)
+        # If this is the last pattern segment or a break comes after insert extra note
+        extraNote = i == len(patternData) - 1 or (i < len(patternData) - 1 and patternData[i + 1][0] == Pattern.Break)
+
+        notes = createNotePattern(pattern, measures, meter, beatSubdivision, lastnote=extraNote)
         currentNoteIndex = 0
         for measureNumber, _, msTime in metronomeTiming(bpm, measures, meter):
             if measureNumber == -1:
-                if i == len(patternData) - 1:
-                    # If this is the last pattern segment, insert extra note
+                if extraNote:
                     note = notes[currentNoteIndex]
                     for j, x in enumerate(note):
                         if not x: continue
@@ -310,23 +316,30 @@ if __name__ == "__main__":
         ( Pattern.SingleStream,     170,  16,        4,      4               ),
         ( Pattern.Jumpjack,         210,  16,        4,      2               ),
 
+        ( Pattern.Break,            150,  8,         4,      4               ),
+
         ( Pattern.LightJumpstream,  180,  16,        4,      4               ),
         ( Pattern.LightChordjack,   220,  32,        4,      2               ),
 
+        ( Pattern.Break,            150,  8,         4,      4               ),
+
         ( Pattern.DenseJumpstream,  190,  32,        4,      4               ),
         ( Pattern.LightChordjack,   230,  32,        4,      2               ),
+
+        ( Pattern.Break,            150,  8,         4,      4               ),
 
         ( Pattern.DenseHandstream,  180,  16,        4,      4               ),
         ( Pattern.DenseChordjack,   190,  16,        4,      2               ),
     ]
 
-    print("Creating audio...")
-    audioData = createMetronomeAudioData(patternSegments)
-
-    print("Exporting...")
     with TemporaryDirectory() as tmpDirName:
         tmpDirPath = Path(tmpDirName)
-        audioData.export(tmpDirPath / "audio.mp3", format="mp3")
+
+        print("Creating patterns...")
         createQuaFile(tmpDirPath / "map.qua", patternSegments)
+
+        print("Creating audio...")
+        createMetronomeAudioData(patternSegments).export(tmpDirPath / "audio.mp3", format="mp3")
+
         shutil.make_archive(base_name=str(fileDir / "out"), format="zip", root_dir=tmpDirName)
         shutil.move(fileDir / "out.zip", fileDir / "out.qp")
