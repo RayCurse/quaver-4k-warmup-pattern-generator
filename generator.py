@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from enum import Enum
 from random import shuffle
 from random import sample
+from random import choices
 from pathlib import Path
 from pydub import AudioSegment
 fileDir = Path(__file__).parent
@@ -148,19 +149,54 @@ def randomJackNote(prevNote, length, numOfJacks, excludedJackColumns=None):
 
     return newNote, jackedNotes
 
-def randomStreamNote(prevNote, length=1):
+# strain parameters for streams
+strainGain = 1 # how much a single note increases strain by
+strainReduction = 1.5 # how much strain reduces by when not hit
+strainHandGain = 0.25 # how much strain increases on rest of hand
+
+def randomStreamNote(prevNote, length, strain=None):
     # new note of given length that doesn't create a jack with prev note
-    availableNotes = numLanes - noteLength(prevNote)
-    if availableNotes <= 0 or length > availableNotes: raise Exception("invalid pattern")
-    noteOverlay = [True]*length + [False]*(availableNotes - length)
-    shuffle(noteOverlay)
-    note = [False]*numLanes
-    i = 0
-    for j in range(numLanes):
-        if prevNote[j]: continue
-        note[j] = noteOverlay[i]
-        i += 1
-    return note
+    # choose next note randomly weighted inverse to the current strain on those notes selected
+    if strain is None:
+        strain = [0.0] * numLanes
+
+    availableLanes = set()
+    for i, x in enumerate(prevNote):
+        if not x: availableLanes.add(i)
+
+    if len(availableLanes) <= 0 or length > len(availableLanes): raise Exception("invalid pattern")
+    possibleNotes = list(itertools.combinations(availableLanes, length))
+    shuffle(possibleNotes)
+
+    selectedNote = None
+    weights = []
+    for note in possibleNotes:
+        noteStrain = 0
+        for i in note: noteStrain += strain[i]
+        if noteStrain == 0:
+            selectedNote = note
+            break
+        weights.append(1/noteStrain)
+    if selectedNote is None:
+        selectedNote = choices(possibleNotes, weights=weights)[0]
+    note = [False] * numLanes
+    for i in selectedNote: note[i] = True
+
+    # Update strain, reduce for all notes that weren't hit this time
+    for i, x in enumerate(note):
+        if not x:
+            # Reduce strain for note that wasn't hit this time
+            strain[i] = max(strain[i] - strainReduction, 0)
+        else:
+            # Increase strain for note that was hit
+            strain[i] += strainGain
+            # Increase strain by reduced amount for all lanes on the same hand
+            middle = numLanes // 2
+            interval = range(middle) if i < middle else range(middle, numLanes)
+            for i in interval:
+                strain[i] += strainHandGain
+
+    return note, strain
 
 def generatePatternNote(pattern, subdivision, prevNote, prevData=None):
     # generate note based on subdivision within beat and prevNote
@@ -173,22 +209,22 @@ def generatePatternNote(pattern, subdivision, prevNote, prevData=None):
         note = [False] * numLanes
 
     elif pattern == Pattern.SingleStream:
-        note = randomStreamNote(prevNote)
+        note, data = randomStreamNote(prevNote, 1, prevData)
 
     elif pattern == Pattern.LightJumpstream:
-        note = randomStreamNote(prevNote, 2 if subdivision == 0 else 1)
+        note, data = randomStreamNote(prevNote, 2 if subdivision == 0 else 1, prevData)
 
     elif pattern == Pattern.DenseJumpstream:
-        note = randomStreamNote(prevNote, 2 if subdivision % 2 == 0 else 1)
+        note, data = randomStreamNote(prevNote, 2 if subdivision % 2 == 0 else 1, prevData)
 
     elif pattern == Pattern.LightHandstream:
-        note = randomStreamNote(prevNote, 3 if subdivision == 0 else 1)
+        note, data = randomStreamNote(prevNote, 3 if subdivision == 0 else 1, prevData)
 
     elif pattern == Pattern.DenseHandstream:
-        if subdivision == 0: note = randomStreamNote(prevNote, min(3, numLanes - noteLength(prevNote)))
-        elif subdivision % 4 == 0: note = randomStreamNote(prevNote, 3)
-        elif subdivision % 2 == 0: note = randomStreamNote(prevNote, 2)
-        else: note = randomStreamNote(prevNote)
+        if subdivision == 0: note, data = randomStreamNote(prevNote, min(3, numLanes - noteLength(prevNote)), prevData)
+        elif subdivision % 4 == 0: note, data = randomStreamNote(prevNote, 3, prevData)
+        elif subdivision % 2 == 0: note, data = randomStreamNote(prevNote, 2, prevData)
+        else: note, data = randomStreamNote(prevNote, 1, prevData)
 
     elif pattern == Pattern.Jumpjack:
         note, data = randomJackNote(prevNote, 2, 1, prevData)
